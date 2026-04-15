@@ -7,12 +7,18 @@ import config
 class BaseWidget:
     """Threaded widget base. Subclasses override fetch_data() and draw()."""
 
+    # Set True in subclasses whose visuals change every frame (e.g. clock hands).
+    # False means the widget is only redrawn when new data arrives.
+    _ALWAYS_DIRTY = False
+
     def __init__(self, surface, rect):
-        self.surface = surface
-        self.rect    = pygame.Rect(rect)
-        self.data    = {}
-        self._lock   = threading.Lock()
+        self.surface     = surface
+        self.rect        = pygame.Rect(rect)
+        self.data        = {}
+        self._lock       = threading.Lock()
         self._refresh_interval = 300
+        self._dirty      = True   # draw on first frame
+        self._cache_surf = None   # last-rendered snapshot
 
     def start_data_fetch(self):
         t = threading.Thread(target=self._loop, daemon=True)
@@ -25,6 +31,7 @@ class BaseWidget:
                 if result is not None:
                     with self._lock:
                         self.data = result
+                    self._dirty = True          # new data → redraw
             except Exception as exc:
                 print(f"[{self.__class__.__name__}] fetch error: {exc}")
             time.sleep(self._refresh_interval)
@@ -43,8 +50,14 @@ class BaseWidget:
             if result is not None:
                 with self._lock:
                     self.data = result
+                self._dirty = True              # new data → redraw
         except Exception as exc:
             print(f"[{self.__class__.__name__}] refresh error: {exc}")
+
+    def invalidate(self):
+        """Force a full redraw on the next frame (e.g. after screen recreate)."""
+        self._dirty      = True
+        self._cache_surf = None
 
     def draw(self):
         raise NotImplementedError

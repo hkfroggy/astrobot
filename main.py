@@ -102,7 +102,7 @@ def main():
     # ── Settings overlay ──────────────────────────────────────────────────────
     settings = SettingsOverlay(screen)
 
-    # ── Divider lines ─────────────────────────────────────────────────────────
+    # ── Static background (background colour + dividers, rendered once) ───────
     DIVIDERS = [
         ((0,   300), (1024, 300)),
         ((280,   0), (280,  300)),
@@ -110,6 +110,14 @@ def main():
         ((580, 300), (580,  600)),
     ]
 
+    def _make_bg():
+        bg = pygame.Surface((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
+        bg.fill(config.BG_COLOR)
+        for p1, p2 in DIVIDERS:
+            pygame.draw.line(bg, config.DIVIDER, p1, p2, 1)
+        return bg
+
+    _bg_surf   = _make_bg()
     gear_hover = False
 
     # ── Main loop ─────────────────────────────────────────────────────────────
@@ -127,10 +135,11 @@ def main():
             if settings.is_open:
                 result = settings.handle_event(event)
                 if result == "saved":
-                    # Clear stale data and re-fetch with new location/units
+                    # Clear stale data, re-fetch, and invalidate caches
                     for w in widgets:
                         with w._lock:
                             w.data = {}
+                        w.invalidate()
                         w.force_refresh()
                 continue
 
@@ -142,9 +151,11 @@ def main():
                     settings.open()
                 elif event.key == pygame.K_f:
                     is_fullscreen = not is_fullscreen
-                    screen = _make_screen(is_fullscreen)
+                    screen    = _make_screen(is_fullscreen)
+                    _bg_surf  = _make_bg()
                     for w in widgets:
                         w.surface = screen
+                        w.invalidate()
                     settings.surface = screen
 
             # Gear button click
@@ -153,16 +164,21 @@ def main():
                     settings.open()
 
         # ── Draw ──────────────────────────────────────────────────────────────
-        screen.fill(config.BG_COLOR)
+        # Paint the pre-rendered static background (cheap blit, no fill loop)
+        screen.blit(_bg_surf, (0, 0))
 
         for w in widgets:
+            needs_draw = w._ALWAYS_DIRTY or w._dirty or w._cache_surf is None
             try:
-                w.draw()
+                if needs_draw:
+                    w.draw()
+                    # Snapshot the widget region so we can replay it cheaply
+                    w._cache_surf = screen.subsurface(w.rect).copy()
+                    w._dirty      = False
+                else:
+                    screen.blit(w._cache_surf, w.rect.topleft)
             except Exception as exc:
                 print(f"[draw] {w.__class__.__name__}: {exc}")
-
-        for p1, p2 in DIVIDERS:
-            pygame.draw.line(screen, config.DIVIDER, p1, p2, 1)
 
         draw_gear_button(screen, _GEAR_RECT, hovered=gear_hover)
 

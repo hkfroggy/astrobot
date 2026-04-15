@@ -20,6 +20,8 @@ except Exception:
 
 class ClockWidget(BaseWidget):
 
+    _ALWAYS_DIRTY = True   # second hand moves every frame
+
     def __init__(self, surface, rect):
         super().__init__(surface, rect)
         self._refresh_interval = config.WEATHER_REFRESH
