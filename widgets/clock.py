@@ -22,7 +22,7 @@ class ClockWidget(BaseWidget):
 
     def __init__(self, surface, rect):
         super().__init__(surface, rect)
-        self._refresh_interval = 600    # re-fetch forecast every 10 min
+        self._refresh_interval = config.WEATHER_REFRESH
         pygame.font.init()
         self._f_date    = self.make_font(15)
         self._f_small   = self.make_font(12)

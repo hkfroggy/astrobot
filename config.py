@@ -28,9 +28,9 @@ DSO_SHOOT_START = 20.0   # shooting window start hour (24h decimal, e.g. 20.5 = 
 DSO_SHOOT_END   =  5.0   # shooting window end   hour (24h decimal)
 
 # ── Refresh intervals (seconds) ───────────────────────────────────────────────
-WEATHER_REFRESH = 600    # 10 min
+WEATHER_REFRESH = 3600   # 1 hr
 TIDE_REFRESH    = 3600   # 1 hr
-ASTRO_REFRESH   = 300    # 5 min
+ASTRO_REFRESH   = 3600   # 1 hr
 
 # ── Layout rects (x, y, w, h) — must tile to 1024×640 ────────────────────────
 LAYOUT = {
