@@ -134,7 +134,9 @@ def main():
             # Settings overlay intercepts all events while open
             if settings.is_open:
                 result = settings.handle_event(event)
-                if result == "saved":
+                if result == "terminate":
+                    running = False
+                elif result == "saved":
                     # Clear stale data, re-fetch, and invalidate caches
                     for w in widgets:
                         with w._lock:

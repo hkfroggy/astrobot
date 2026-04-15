@@ -447,6 +447,8 @@ class SettingsOverlay:
             self._page = 2; return None
 
         # Shared buttons
+        if self._terminate_btn_rect().collidepoint(rx, ry):
+            return self._close("terminate")
         if self._cancel_btn_rect().collidepoint(rx, ry):
             return self._close("cancelled")
         if self._save_btn_rect().collidepoint(rx, ry):
@@ -542,8 +544,9 @@ class SettingsOverlay:
                          (pr.x + 14, pr.y + _BTNS_Y - 8),
                          (pr.x + _POP_W - 14, pr.y + _BTNS_Y - 8), 1)
         for label, rect_fn, bg, fg in (
-            ("Cancel", self._cancel_btn_rect, _C["panel"], _C["mid"]),
-            ("Save",   self._save_btn_rect,   _C["blue"],  _C["hi"]),
+            ("Terminate", self._terminate_btn_rect, (90, 28, 28),   (255, 110, 100)),
+            ("Cancel",    self._cancel_btn_rect,    _C["panel"],    _C["mid"]),
+            ("Save",      self._save_btn_rect,      _C["blue"],     _C["hi"]),
         ):
             br  = rect_fn()
             abr = pygame.Rect(pr.x + br.x, pr.y + br.y, br.w, br.h)
@@ -713,8 +716,11 @@ class SettingsOverlay:
         return pygame.Rect(x, _Y_CONT + _P1["unit_btn"], 56, 32)
 
     # Shared
+    def _terminate_btn_rect(self):
+        return pygame.Rect(16, _BTNS_Y, 105, 38)
+
     def _cancel_btn_rect(self):
-        return pygame.Rect(16, _BTNS_Y, 115, 38)
+        return pygame.Rect(129, _BTNS_Y, 105, 38)
 
     def _save_btn_rect(self):
         return pygame.Rect(_POP_W - 131, _BTNS_Y, 115, 38)
