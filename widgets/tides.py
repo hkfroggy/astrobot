@@ -122,8 +122,7 @@ class TidesWidget(BaseWidget):
 
         rx = self.rect.x + 10
         ry = self.rect.y + 8
-        rw = self.rect.width  - 20
-        rh = self.rect.height - 16
+        rw = self.rect.width - 20
 
         # Title
         self.text("TIDES & SWELL", self._f_title, config.TEXT_LO,
@@ -137,15 +136,25 @@ class TidesWidget(BaseWidget):
             self.loading(self._f_med)
             return
 
-        tides = d.get("tides")
-        hilo  = d.get("hilo",  [])
-        swell = d.get("swell") or {}
+        tides    = d.get("tides")
+        hilo     = d.get("hilo", [])
+        swell    = d.get("swell") or {}
 
-        # ── Tide curve chart ──────────────────────────────────────────────────
-        chart_h = 110
-        chart_w = rw
+        # ── Equal-height sections ─────────────────────────────────────────────
+        # Split remaining space exactly in half: top = tide, bottom = swell.
+        HDR_H  = 14   # section label row
+        XLBL_H = 16   # x-axis label row below each chart
+        available  = self.rect.bottom - 6 - ry   # pixels below the title divider
+        section_h  = available // 2               # each section gets half
+        chart_h    = section_h - HDR_H - XLBL_H  # inner chart height
+
+        mid_y = ry + section_h                    # y of the divider between sections
+
+        # ── TIDE chart ────────────────────────────────────────────────────────
+        self.text("TIDE", self._f_tiny, config.TEXT_LO, rx, ry)
+
+        chart_y = ry + HDR_H
         chart_x = rx
-        chart_y = ry
 
         if tides:
             heights = [h for _, h in tides]
@@ -153,17 +162,16 @@ class TidesWidget(BaseWidget):
             spread  = max(mx - mn, 0.5)
 
             def _px(i, h):
-                px = chart_x + int(i * chart_w / (len(tides) - 1))
-                py = chart_y + chart_h - int((h - mn) / spread * (chart_h - 10)) - 5
+                px = chart_x + int(i * rw / max(len(tides) - 1, 1))
+                py = chart_y + chart_h - int((h - mn) / spread * (chart_h - 8)) - 4
                 return px, py
 
-            # Filled area
-            pts = [_px(i, h) for i, (_, h) in enumerate(tides)]
-            poly = [pts[0]] + pts + [(pts[-1][0], chart_y + chart_h),
-                                      (pts[0][0],  chart_y + chart_h)]
+            # Filled area + line
+            pts  = [_px(i, h) for i, (_, h) in enumerate(tides)]
+            poly = [(pts[0][0], chart_y + chart_h)] + pts + \
+                   [(pts[-1][0], chart_y + chart_h)]
             pygame.draw.polygon(self.surface, config.TIDE_FILL, poly)
-            # Line
-            pygame.draw.lines(self.surface, config.TIDE_LINE, False, pts, 2)
+            pygame.draw.lines(self.surface,  config.TIDE_LINE, False, pts, 2)
 
             # Now-marker
             now_h = datetime.datetime.now().hour
@@ -171,21 +179,21 @@ class TidesWidget(BaseWidget):
                 nx, ny = _px(now_h, tides[now_h][1])
                 pygame.draw.circle(self.surface, config.CYAN, (nx, ny), 5)
 
-            # High/Low markers
+            # High/Low dot-markers on the curve (kept as chart annotations)
             for hl in hilo:
                 try:
                     hh = int(hl["time"][:2])
                     if 0 <= hh < len(tides):
                         hx, hy = _px(hh, hl["height"])
-                        clr  = config.GOLD if hl["type"] == "H" else config.BLUE
-                        lbl  = f"{'H' if hl['type']=='H' else 'L'} {hl['height']:.1f}"
+                        clr    = config.GOLD if hl["type"] == "H" else config.BLUE
+                        lbl    = f"{'H' if hl['type']=='H' else 'L'} {hl['height']:.1f}"
                         pygame.draw.circle(self.surface, clr, (hx, hy), 5)
                         offset = -14 if hl["type"] == "H" else 6
                         self.text(lbl, self._f_tiny, clr, hx, hy + offset, "midtop")
                 except Exception:
                     pass
 
-            # X-axis hour labels
+            # X-axis labels
             for h_lbl in (0, 6, 12, 18, 23):
                 lx, _ = _px(h_lbl, mn)
                 self.text(f"{h_lbl:02d}:00", self._f_tiny, config.TEXT_LO,
@@ -197,82 +205,53 @@ class TidesWidget(BaseWidget):
             self.text(no_msg, self._f_small, config.TEXT_LO,
                       self.rect.centerx, chart_y + chart_h // 2, "center")
 
-        ry += chart_h + 22
+        # Divider between sections
         pygame.draw.line(self.surface, config.DIVIDER,
-                         (self.rect.x + 6, ry - 6),
-                         (self.rect.right - 6, ry - 6), 1)
+                         (self.rect.x + 6, mid_y - 2),
+                         (self.rect.right - 6, mid_y - 2), 1)
 
-        # ── Hi/Lo tide table ──────────────────────────────────────────────────
-        col_x = [rx, rx + rw // 2]
-        col_i = 0
-        hl_y  = ry
+        # ── SWELL chart ───────────────────────────────────────────────────────
+        sw_ry     = mid_y
+        sw_chart_y = sw_ry + HDR_H
+        sw_bot    = sw_ry + section_h - XLBL_H   # bottom of swell chart area
+        sw_ch     = sw_bot - sw_chart_y
+        cw        = rw
 
-        for hl in hilo[:4]:
-            cx2  = col_x[col_i % 2]
-            clr  = config.GOLD if hl["type"] == "H" else config.CYAN
-            lbl  = "HIGH" if hl["type"] == "H" else "LOW"
-            unit = config.NOAA_TIDE_UNIT_LBL
-            self.text(f"{lbl}  {hl['time']}", self._f_small, clr,      cx2, hl_y)
-            self.text(f"{hl['height']:.2f} {unit}",
-                      self._f_tiny, config.TEXT_MID, cx2, hl_y + 15)
-            if col_i % 2 == 1:
-                hl_y += 36
-            col_i += 1
+        sh       = swell.get("height")
+        sp       = swell.get("period")
+        sd       = swell.get("direction")
+        hourly_h = swell.get("hourly_h") or []
 
-        # ── Swell chart ───────────────────────────────────────────────────────
-        # Pin the swell section to the bottom of the widget so it always uses
-        # whatever space is left after the tide chart + hi/lo table.
-        SWELL_H  = 68    # total height reserved for header + chart
-        ry2      = self.rect.bottom - SWELL_H
-
-        pygame.draw.line(self.surface, config.DIVIDER,
-                         (self.rect.x + 6, ry2 - 2),
-                         (self.rect.right - 6, ry2 - 2), 1)
-
-        sh        = swell.get("height")
-        sp        = swell.get("period")
-        sd        = swell.get("direction")
-        hourly_h  = swell.get("hourly_h") or []
-
-        # Header line: "SWELL"  +  current period  +  direction  +  arrow
-        self.text("SWELL", self._f_tiny, config.TEXT_LO, rx, ry2)
+        # Header: "SWELL" + current stats
+        self.text("SWELL", self._f_tiny, config.TEXT_LO, rx, sw_ry)
         if sh is not None:
             sp_s = f"{sp:.0f}s" if sp is not None else "--"
             sd_s = _dir_label(sd) if sd is not None else "--"
             self.text(f"{sh:.1f}m  {sp_s}  {sd_s}",
-                      self._f_tiny, config.BLUE,
-                      rx + 46, ry2)
+                      self._f_tiny, config.BLUE, rx + 46, sw_ry)
             if sd is not None:
-                _draw_arrow(self.surface, self.rect.right - 22, ry2 + 7, 10, sd)
+                _draw_arrow(self.surface, self.rect.right - 22, sw_ry + 7, 10, sd)
 
-        # Chart geometry — fills the remaining space below the header
         valid = [(i, h) for i, h in enumerate(hourly_h) if h is not None]
-        cy0   = ry2 + 16
-        cy1   = self.rect.bottom - 14
-        ch    = cy1 - cy0
-        cw    = rw
 
-        if valid and ch > 8:
-            h_min  = 0.0
-            h_max  = max(h for _, h in valid)
-            span   = max(h_max - h_min, 0.3)
+        if valid and sw_ch > 8:
+            h_max = max(h for _, h in valid)
+            span  = max(h_max, 0.3)
 
             def _spx(hr, h):
                 x = rx + int(hr / 23 * cw)
-                y = cy1 - int((h - h_min) / span * (ch - 2)) - 1
+                y = sw_bot - int(h / span * (sw_ch - 2)) - 1
                 return x, y
 
             # Background
             pygame.draw.rect(self.surface, (5, 12, 28),
-                             pygame.Rect(rx, cy0, cw, ch))
+                             pygame.Rect(rx, sw_chart_y, cw, sw_ch))
 
-            # Filled area
-            poly = [_spx(hr, h) for hr, h in valid]
-            poly = [(rx, cy1)] + poly + [(rx + cw, cy1)]
+            # Fill + line
+            poly = [(rx, sw_bot)] + [_spx(hr, h) for hr, h in valid] + \
+                   [(rx + cw, sw_bot)]
             if len(poly) >= 3:
                 pygame.draw.polygon(self.surface, (14, 42, 88), poly)
-
-            # Line
             if len(valid) >= 2:
                 pygame.draw.lines(self.surface, config.BLUE, False,
                                   [_spx(hr, h) for hr, h in valid], 2)
@@ -290,20 +269,18 @@ class TidesWidget(BaseWidget):
             for hr_lbl in (0, 6, 12, 18, 23):
                 lx = rx + int(hr_lbl / 23 * cw)
                 pygame.draw.line(self.surface, config.DIVIDER,
-                                 (lx, cy1), (lx, cy1 + 3), 1)
+                                 (lx, sw_bot), (lx, sw_bot + 3), 1)
                 self.text(f"{hr_lbl:02d}", self._f_tiny, config.TEXT_LO,
-                          lx, cy1 + 4, "midtop")
+                          lx, sw_bot + 4, "midtop")
 
-            # Y max label
+            # Y max label + border
             self.text(f"{h_max:.1f}m", self._f_tiny, config.TEXT_LO,
-                      rx + 2, cy0 + 1)
-
-            # Border
+                      rx + 2, sw_chart_y + 1)
             pygame.draw.rect(self.surface, config.DIVIDER,
-                             pygame.Rect(rx, cy0, cw, ch), 1)
+                             pygame.Rect(rx, sw_chart_y, cw, sw_ch), 1)
         else:
             self.text("Swell data unavailable", self._f_tiny, config.TEXT_LO,
-                      rx, ry2 + 14)
+                      rx, sw_ry + HDR_H)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
