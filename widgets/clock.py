@@ -55,9 +55,9 @@ class ClockWidget(BaseWidget):
         now = datetime.datetime.now()
         cx  = self.rect.centerx
 
-        # Clock radius — smaller than before to leave ~85 px for the forecast
-        r  = 85
-        cy = self.rect.top + r + 16     # = 101 px from widget top
+        # Clock radius — sized to leave ~80 px for the forecast strip within 300 px
+        r  = 78
+        cy = self.rect.top + r + 12     # = 90 px from widget top
 
         # ── Face ─────────────────────────────────────────────────────────────
         pygame.draw.circle(self.surface, config.CLOCK_BG,  (cx, cy), r)

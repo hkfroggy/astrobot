@@ -1,8 +1,11 @@
 #!/usr/bin/env .venv/bin/python3
 """
-AstroBot Dashboard — 1024×640 full-screen Raspberry Pi display
-Run:  python main.py
-      python main.py --windowed    (dev / desktop mode)
+AstroBot Dashboard — 1024×600 full-screen Raspberry Pi display
+Run:  python main.py               (full-screen, default)
+      python main.py --windowed    (start in windowed mode)
+Keys: F = toggle full-screen / windowed
+      S = open settings
+      Q / Esc = quit
 """
 import sys
 import pygame
@@ -68,17 +71,20 @@ def _make_icon():
 
 
 def main():
-    windowed = "--windowed" in sys.argv
+    is_fullscreen = "--windowed" not in sys.argv   # full-screen by default
 
     pygame.init()
     pygame.mouse.set_visible(True)
     pygame.display.set_caption("AstroBot")
     pygame.display.set_icon(_make_icon())
 
-    flags = 0 if windowed else pygame.FULLSCREEN
-    screen = pygame.display.set_mode(
-        (config.SCREEN_WIDTH, config.SCREEN_HEIGHT), flags
-    )
+    def _make_screen(fullscreen):
+        flags = pygame.FULLSCREEN if fullscreen else 0
+        return pygame.display.set_mode(
+            (config.SCREEN_WIDTH, config.SCREEN_HEIGHT), flags
+        )
+
+    screen = _make_screen(is_fullscreen)
 
     clock = pygame.time.Clock()
 
@@ -98,10 +104,10 @@ def main():
 
     # ── Divider lines ─────────────────────────────────────────────────────────
     DIVIDERS = [
-        ((0,   320), (1024, 320)),
-        ((280,   0), (280,  320)),
-        ((360, 320), (360,  640)),
-        ((580, 320), (580,  640)),
+        ((0,   300), (1024, 300)),
+        ((280,   0), (280,  300)),
+        ((360, 300), (360,  600)),
+        ((580, 300), (580,  600)),
     ]
 
     gear_hover = False
@@ -134,6 +140,12 @@ def main():
                     running = False
                 elif event.key == pygame.K_s:
                     settings.open()
+                elif event.key == pygame.K_f:
+                    is_fullscreen = not is_fullscreen
+                    screen = _make_screen(is_fullscreen)
+                    for w in widgets:
+                        w.surface = screen
+                    settings.surface = screen
 
             # Gear button click
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:

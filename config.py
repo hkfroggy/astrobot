@@ -1,8 +1,7 @@
 # ── Display ───────────────────────────────────────────────────────────────────
 SCREEN_WIDTH  = 1024
-SCREEN_HEIGHT = 640
+SCREEN_HEIGHT = 600
 FPS           = 30
-FULLSCREEN    = True   # set False for windowed dev mode
 
 # ── Location — update for your site ──────────────────────────────────────────
 LATITUDE      = 34.05       # decimal degrees N  (negative = S)
@@ -35,11 +34,11 @@ ASTRO_REFRESH   = 300    # 5 min
 
 # ── Layout rects (x, y, w, h) — must tile to 1024×640 ────────────────────────
 LAYOUT = {
-    "clock":    (0,   0,   280, 320),
-    "weather":  (280, 0,   744, 320),
-    "deep_sky": (0,   320, 360, 320),
-    "moon":     (360, 320, 220, 320),
-    "tides":    (580, 320, 444, 320),
+    "clock":    (0,   0,   280, 300),
+    "weather":  (280, 0,   744, 300),
+    "deep_sky": (0,   300, 360, 300),
+    "moon":     (360, 300, 220, 300),
+    "tides":    (580, 300, 444, 300),
 }
 
 # ── Color palette (dark-space theme) ─────────────────────────────────────────

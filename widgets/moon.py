@@ -238,7 +238,7 @@ class MoonWidget(BaseWidget):
         pad = _GLOW_PAD
 
         # ── Moon disk ─────────────────────────────────────────────────────────
-        moon_r = min(self.rect.width, self.rect.height) // 2 - 28
+        moon_r = min(self.rect.width, self.rect.height) // 2 - 34
         moon_r = max(moon_r, 50)
 
         key = (round(frac, 3), moon_r)
