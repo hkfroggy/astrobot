@@ -19,12 +19,61 @@ from settings         import SettingsOverlay, draw_gear_button
 _GEAR_RECT = pygame.Rect(config.SCREEN_WIDTH - 46, 6, 36, 36)
 
 
+def _make_icon():
+    """
+    Generate a 64×64 app icon: white robot on a blue background.
+    Drawn entirely with pygame primitives — no image file needed.
+    """
+    S  = 64
+    BG = ( 30, 100, 220)   # blue background
+    W  = (230, 235, 245)   # off-white robot body
+    EY = ( 20,  70, 180)   # dark-blue eye / detail colour
+
+    surf = pygame.Surface((S, S))
+    surf.fill(BG)
+
+    # ── Antenna ──────────────────────────────────────────────────────────────
+    pygame.draw.rect(surf,   W,  pygame.Rect(30,  3,  4, 10))   # stem
+    pygame.draw.circle(surf, W,  (32, 3), 4)                     # ball
+
+    # ── Head ─────────────────────────────────────────────────────────────────
+    pygame.draw.rect(surf,   W,  pygame.Rect(11, 13, 42, 22), border_radius=4)
+    # Eyes
+    pygame.draw.circle(surf, EY, (23, 24), 6)
+    pygame.draw.circle(surf, EY, (41, 24), 6)
+    pygame.draw.circle(surf, W,  (23, 24), 3)   # highlight
+    pygame.draw.circle(surf, W,  (41, 24), 3)
+    # Mouth — five short segments
+    for i in range(5):
+        pygame.draw.rect(surf, EY, pygame.Rect(18 + i * 6, 31, 4, 2))
+
+    # ── Neck ─────────────────────────────────────────────────────────────────
+    pygame.draw.rect(surf, W, pygame.Rect(27, 35, 10, 5))
+
+    # ── Body ─────────────────────────────────────────────────────────────────
+    pygame.draw.rect(surf, W, pygame.Rect( 9, 40, 46, 18), border_radius=3)
+    # Chest panel detail
+    pygame.draw.rect(surf, EY, pygame.Rect(20, 44, 24,  8), border_radius=2)
+    pygame.draw.circle(surf, W, (32, 48), 4)   # centre button
+
+    # ── Arms ─────────────────────────────────────────────────────────────────
+    pygame.draw.rect(surf, W, pygame.Rect( 1, 41,  7, 13), border_radius=2)
+    pygame.draw.rect(surf, W, pygame.Rect(56, 41,  7, 13), border_radius=2)
+
+    # ── Legs ─────────────────────────────────────────────────────────────────
+    pygame.draw.rect(surf, W, pygame.Rect(14, 58, 12,  6), border_radius=2)
+    pygame.draw.rect(surf, W, pygame.Rect(38, 58, 12,  6), border_radius=2)
+
+    return surf
+
+
 def main():
     windowed = "--windowed" in sys.argv
 
     pygame.init()
     pygame.mouse.set_visible(True)
     pygame.display.set_caption("AstroBot")
+    pygame.display.set_icon(_make_icon())
 
     flags = 0 if windowed else pygame.FULLSCREEN
     screen = pygame.display.set_mode(
