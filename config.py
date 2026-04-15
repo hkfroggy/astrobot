@@ -1,7 +1,7 @@
 # ── Display ───────────────────────────────────────────────────────────────────
 SCREEN_WIDTH  = 1024
 SCREEN_HEIGHT = 600
-FPS           = 30
+FPS           = 3
 
 # ── Location — update for your site ──────────────────────────────────────────
 LATITUDE      = 34.05       # decimal degrees N  (negative = S)
