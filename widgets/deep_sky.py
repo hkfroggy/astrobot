@@ -35,6 +35,10 @@ _HIPS_BASE = "https://alasky.u-strasbg.fr/hips-image-services/hips2fits"
 _HIPS_SURVEY_PRIMARY  = "CDS/P/DSS2/color"      # RGB color DSS2 — full sky
 _HIPS_SURVEY_FALLBACK = "CDS/P/2MASS/color"     # 2MASS infrared fallback
 
+# Multiply every catalog FoV by this factor when requesting images.
+# 2.0 = zoom out by 50 % (object appears at half original scale, more context shown).
+_FOV_SCALE = 2.0
+
 # ── Thread-safe image cache ───────────────────────────────────────────────────
 # Background threads store raw JPEG bytes → main thread converts to Surface.
 _raw:   dict[str, bytes | None] = {}   # name → bytes (or None = failed)
@@ -66,7 +70,7 @@ def _fetch_worker(obj: dict):
     name = obj["name"]
     ra   = _ra_to_deg(obj["ra"])
     dec  = _dec_to_deg(obj["dec"])
-    fov  = obj.get("fov", 0.7)
+    fov  = obj.get("fov", 0.7) * _FOV_SCALE   # zoom out by 50 %
 
     for survey in (_HIPS_SURVEY_PRIMARY, _HIPS_SURVEY_FALLBACK):
         try:
@@ -175,6 +179,10 @@ class DeepSkyWidget(BaseWidget):
         self._f_tiny  = self.make_font(11)
 
     def fetch_data(self):
+        # Clear the image cache so any FoV-scale change takes effect immediately.
+        _raw.clear()
+        _surf.clear()
+        _pend.clear()
         return {"objects": _build_tonight_list()}
 
     def draw(self):
@@ -463,4 +471,4 @@ def _build_tonight_list() -> list:
         results.append(rec)
 
     results.sort(key=lambda x: -(x["max_alt"] or 0))
-    return results[:12]
+    return results[:10]
