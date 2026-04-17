@@ -334,21 +334,6 @@ class SatelliteWidget(BaseWidget):
                 self.surface.blit(ps, cpill.topleft)
                 self.surface.blit(c_surf, (clx, cly))
 
-            # ── Configured location label ─────────────────────────────────────
-            city = config.LOCATION_NAME
-            lbl_surf = self._f_tiny.render(city, True, (255, 220, 200))
-            lw, lh  = lbl_surf.get_size()
-            pad     = 3
-            lx      = mx + arm + 4
-            ly      = my - lh // 2
-            # Keep label inside image bounds
-            if lx + lw + pad > bx + dw:
-                lx = mx - arm - lw - pad - 4
-            pill = pygame.Rect(lx - pad, ly - pad, lw + pad * 2, lh + pad * 2)
-            pill_surf = pygame.Surface((pill.w, pill.h), pygame.SRCALPHA)
-            pill_surf.fill((0, 0, 0, 160))
-            self.surface.blit(pill_surf, pill.topleft)
-            self.surface.blit(lbl_surf, (lx, ly))
         else:
             pygame.draw.rect(self.surface, (6, 10, 22), img_rect)
             self._draw_spinner(img_rect)
