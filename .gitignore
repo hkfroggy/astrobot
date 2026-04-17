@@ -7,3 +7,4 @@ dist/
 build/
 .env
 settings.json
+assets/dso/

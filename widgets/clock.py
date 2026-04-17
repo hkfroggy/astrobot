@@ -121,7 +121,12 @@ class ClockWidget(BaseWidget):
                          (self.rect.x + 8, strip_y),
                          (self.rect.right - 8, strip_y), 1)
 
-        if d:
+        if self._fetch_failed:
+            if not hasattr(self, '_f_err_sm'):
+                self._f_err_sm = self.make_font(11)
+            self.text("Unable to retrieve forecast", self._f_err_sm, (200, 80, 70),
+                      cx, strip_y + 12, "midtop")
+        elif d:
             self._draw_forecast(d, strip_y + 4)
 
     # ── Forecast strip ────────────────────────────────────────────────────────

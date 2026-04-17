@@ -218,6 +218,9 @@ class MoonWidget(BaseWidget):
 
     def draw(self):
         self.draw_bg()
+        if self._fetch_failed:
+            self.draw_error()
+            return
         with self._lock:
             d = dict(self.data)
 

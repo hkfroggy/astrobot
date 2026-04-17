@@ -1,10 +1,10 @@
 """
 Deep-sky object widget.
 
-Images fetched from CDS HiPS2FITS (DSS2 color survey, full sky, no key needed).
-  https://alasky.u-strasbg.fr/hips-image-services/hips2fits
-
-Falls back to procedural placeholder art when the network is unavailable.
+Images loaded from the local library in assets/dso/ (run download_dso_images.py
+once to populate).  Falls back to CDS HiPS2FITS network fetch if a file is
+missing, then saves it locally for future use.
+Falls back to procedural placeholder art when offline.
 """
 import pygame
 import math
@@ -14,6 +14,7 @@ import datetime
 import time
 import threading
 import requests
+from pathlib import Path
 import config
 from .base import BaseWidget
 
@@ -23,102 +24,69 @@ try:
 except ImportError:
     _EPHEM = False
 
-# ── Layout inside the 360×320 widget ─────────────────────────────────────────
+# ── Layout inside the 360×300 widget ─────────────────────────────────────────
 _MARGIN   =  3
 _HDR_H    = 22      # "TONIGHT'S DSO" bar
 _IMG_W    = 354     # 360 – 2×margin
 _IMG_H    = 194     # image height
-_INFO_TOP = _HDR_H + _IMG_H   # y-offset (from widget top) where info starts
+_INFO_TOP = _HDR_H + _IMG_H   # y-offset where info text starts
 
-# ── CDS HiPS2FITS ─────────────────────────────────────────────────────────────
-_HIPS_BASE = "https://alasky.u-strasbg.fr/hips-image-services/hips2fits"
-_HIPS_SURVEY_PRIMARY  = "CDS/P/DSS2/color"      # RGB color DSS2 — full sky
-_HIPS_SURVEY_FALLBACK = "CDS/P/2MASS/color"     # 2MASS infrared fallback
+# ── CDS HiPS2FITS endpoints ────────────────────────────────────────────────────
+_HIPS_BASE  = "https://alasky.cds.unistra.fr/hips-image-services/hips2fits"
+_HIPS_BASE2 = "https://hips2fits.astropy.org/hips2fits"
+_HIPS_SURVEY_PRIMARY  = "CDS/P/DSS2/color"
+_HIPS_SURVEY_FALLBACK = "CDS/P/2MASS/color"
 
-# Multiply every catalog FoV by this factor when requesting images.
-# 2.0 = zoom out by 50 % (object appears at half original scale, more context shown).
-_FOV_SCALE = 2.0
-
-# ── Thread-safe image cache ───────────────────────────────────────────────────
-# Background threads store raw JPEG bytes → main thread converts to Surface.
-_raw:   dict[str, bytes | None] = {}   # name → bytes (or None = failed)
-_surf:  dict[str, "pygame.Surface | None"] = {}  # name → Surface (or None = failed)
-_pend:  set[str] = set()               # names currently being fetched
+# ── Local image library ───────────────────────────────────────────────────────
+_LOCAL_DIR = Path(__file__).parent.parent / "assets" / "dso"
+_FOV_SCALE = 2.0   # zoom out by 50 %
 
 
-def _ra_to_deg(s: str) -> float:
-    h, m, sec = (float(x) for x in s.split(":"))
-    return (h + m / 60 + sec / 3600) * 15.0
+def _local_path(name: str) -> Path:
+    safe = name.replace(" ", "_").replace("/", "_")
+    return _LOCAL_DIR / f"{safe}.jpg"
 
 
-def _dec_to_deg(s: str) -> float:
-    neg = s.startswith("-")
-    d, m, sec = (float(x) for x in s.lstrip("+-").split(":"))
-    v = d + m / 60 + sec / 3600
-    return -v if neg else v
+def _load_image_bytes(obj: dict) -> "bytes | None":
+    """Return JPEG bytes for obj — local file first, then network."""
+    name  = obj["name"]
+    local = _local_path(name)
 
-
-def _start_fetch(obj: dict):
-    name = obj["name"]
-    if name in _raw or name in _pend:
-        return
-    _pend.add(name)
-    threading.Thread(target=_fetch_worker, args=(obj,), daemon=True).start()
-
-
-def _fetch_worker(obj: dict):
-    name = obj["name"]
-    ra   = _ra_to_deg(obj["ra"])
-    dec  = _dec_to_deg(obj["dec"])
-    fov  = obj.get("fov", 0.7) * _FOV_SCALE   # zoom out by 50 %
-
-    for survey in (_HIPS_SURVEY_PRIMARY, _HIPS_SURVEY_FALLBACK):
+    if local.exists():
         try:
-            params = {
-                "hips":       survey,
-                "width":      _IMG_W,
-                "height":     _IMG_H,
-                "fov":        fov,
-                "ra":         f"{ra:.5f}",
-                "dec":        f"{dec:.5f}",
-                "projection": "TAN",
-                "format":     "jpg",
-            }
-            r = requests.get(_HIPS_BASE, params=params, timeout=20)
-            r.raise_for_status()
-            if r.headers.get("Content-Type", "").startswith("image"):
-                _raw[name] = r.content
-                _pend.discard(name)
-                return
+            return local.read_bytes()
         except Exception as e:
-            print(f"[DSO img] {name} ({survey}): {e}")
+            print(f"[DSO img] local read {name}: {e}")
 
-    _raw[name] = None   # all sources failed
-    _pend.discard(name)
+    # Network fallback
+    ra  = _ra_to_deg(obj["ra"])
+    dec = _dec_to_deg(obj["dec"])
+    fov = obj.get("fov", 0.7) * _FOV_SCALE
 
+    for base in (_HIPS_BASE, _HIPS_BASE2):
+        for survey in (_HIPS_SURVEY_PRIMARY, _HIPS_SURVEY_FALLBACK):
+            try:
+                r = requests.get(base, params={
+                    "hips": survey, "width": _IMG_W, "height": _IMG_H,
+                    "fov": fov, "ra": f"{ra:.5f}", "dec": f"{dec:.5f}",
+                    "projection": "TAN", "format": "jpg",
+                }, timeout=20)
+                r.raise_for_status()
+                if len(r.content) > 500:
+                    try:
+                        _LOCAL_DIR.mkdir(parents=True, exist_ok=True)
+                        local.write_bytes(r.content)
+                    except Exception:
+                        pass
+                    return r.content
+            except Exception as e:
+                print(f"[DSO img] {name} {base} ({survey}): {e}")
 
-def _get_surf(name: str) -> "pygame.Surface | None":
-    """Convert cached bytes → Surface (must be called from the main thread)."""
-    if name in _surf:
-        return _surf[name]
-    raw = _raw.get(name)
-    if raw is None and name not in _raw:
-        return None   # still pending
-    if not raw:
-        _surf[name] = None
-        return None
-    try:
-        s = pygame.image.load(io.BytesIO(raw), "img.jpg").convert()
-        _surf[name] = s
-        return s
-    except Exception as e:
-        print(f"[DSO img] convert {name}: {e}")
-        _surf[name] = None
-        return None
+    return None
 
 
 # ── Catalog ───────────────────────────────────────────────────────────────────
-# Columns: name, common, type, RA (h:m:s), Dec (±d:m:s), mag, const, fov_deg
+# name, common, type, RA (h:m:s), Dec (±d:m:s), mag, const, fov_deg
 _CATALOG = [
     ("M31",     "Andromeda Galaxy",       "Galaxy",     "0:42:44",  "+41:16:09",  3.4,  "And", 3.2),
     ("M33",     "Triangulum Galaxy",      "Galaxy",     "1:33:51",  "+30:39:37",  5.7,  "Tri", 1.2),
@@ -163,14 +131,32 @@ _TYPE_COLOR = {
 SLIDE_SECONDS = 10
 
 
+def _ra_to_deg(s: str) -> float:
+    h, m, sec = (float(x) for x in s.split(":"))
+    return (h + m / 60 + sec / 3600) * 15.0
+
+
+def _dec_to_deg(s: str) -> float:
+    neg = s.startswith("-")
+    d, m, sec = (float(x) for x in s.lstrip("+-").split(":"))
+    v = d + m / 60 + sec / 3600
+    return -v if neg else v
+
+
+# ── Widget ────────────────────────────────────────────────────────────────────
+
 class DeepSkyWidget(BaseWidget):
+
+    # Slides advance every 10 s and the spinner animates — must redraw every frame
+    _ALWAYS_DIRTY = True
 
     def __init__(self, surface, rect):
         super().__init__(surface, rect)
         self._refresh_interval = config.ASTRO_REFRESH
         self._slide_idx   = 0
         self._slide_start = time.time()
-        self._spin_tick   = 0   # loading spinner animation
+        self._spin_tick   = 0
+        self._surf_cache: dict[str, "pygame.Surface | None"] = {}
 
         self._f_hdr   = self.make_font(13)
         self._f_name  = self.make_font(18)
@@ -178,24 +164,37 @@ class DeepSkyWidget(BaseWidget):
         self._f_small = self.make_font(13)
         self._f_tiny  = self.make_font(11)
 
+    # ── Data fetch (runs in background thread) ────────────────────────────────
+
     def fetch_data(self):
-        # Clear the image cache so any FoV-scale change takes effect immediately.
-        _raw.clear()
-        _surf.clear()
-        _pend.clear()
-        return {"objects": _build_tonight_list()}
+        """Build tonight's object list and load all image bytes from disk."""
+        self._surf_cache.clear()
+        objects = _build_tonight_list()
+        images  = {}
+        for obj in objects:
+            raw = _load_image_bytes(obj)
+            if raw:
+                images[obj["name"]] = raw
+        return {"objects": objects, "images": images}
+
+    # ── Draw (called every frame) ─────────────────────────────────────────────
 
     def draw(self):
         self.draw_bg()
+        if self._fetch_failed:
+            self.draw_error()
+            return
+
         with self._lock:
             objects = list(self.data.get("objects") or [])
+            images  = dict(self.data.get("images")  or {})
 
         self._spin_tick += 1
 
         rx = self.rect.x
         ry = self.rect.y
 
-        # ── Header bar ────────────────────────────────────────────────────────
+        # ── Header ────────────────────────────────────────────────────────────
         self.text("TONIGHT'S DSO", self._f_hdr, config.TEXT_LO,
                   self.rect.centerx, ry + 5, "midtop")
 
@@ -212,35 +211,46 @@ class DeepSkyWidget(BaseWidget):
         obj  = objects[self._slide_idx % len(objects)]
         name = obj["name"]
 
-        # Kick off image fetches (current + next slide)
-        _start_fetch(obj)
-        if len(objects) > 1:
-            _start_fetch(objects[(self._slide_idx + 1) % len(objects)])
+        # ── Convert bytes → Surface (lazy, cached per-instance) ───────────────
+        if name not in self._surf_cache:
+            raw = images.get(name)
+            if raw:
+                try:
+                    self._surf_cache[name] = pygame.image.load(
+                        io.BytesIO(raw)
+                    ).convert()
+                except Exception as e:
+                    print(f"[DSO img] decode {name}: {e}")
+                    self._surf_cache[name] = None
+            else:
+                self._surf_cache[name] = None
+
+        surf_img = self._surf_cache[name]
 
         # ── Image area ────────────────────────────────────────────────────────
         img_x = rx + _MARGIN
         img_y = ry + _HDR_H
         img_r = pygame.Rect(img_x, img_y, _IMG_W, _IMG_H)
 
-        surf_img = _get_surf(name)
-
         if surf_img is not None:
+            # Scale to fit widget dimensions in case local file is different size
+            if surf_img.get_size() != (_IMG_W, _IMG_H):
+                surf_img = pygame.transform.scale(surf_img, (_IMG_W, _IMG_H))
+                self._surf_cache[name] = surf_img
             self.surface.blit(surf_img, (img_x, img_y))
         else:
-            # Placeholder background
             pygame.draw.rect(self.surface, (6, 10, 24), img_r)
-            if name in _pend:
+            if not images.get(name):
+                # Data not yet loaded — show spinner
                 self._draw_spinner(img_r)
             else:
-                # Procedural art as fallback
+                # Image bytes present but decode failed — procedural art
                 _draw_dso_art(self.surface, obj["type"],
                               img_r.centerx, img_r.centery, 52)
 
-        # Thin frame around image
         pygame.draw.rect(self.surface, config.DIVIDER, img_r, 1)
 
         # ── Image overlays ────────────────────────────────────────────────────
-        # Semi-transparent strip at bottom of image for name/constellation
         strip_h = 38
         ov = pygame.Surface((_IMG_W, strip_h), pygame.SRCALPHA)
         ov.fill((0, 0, 0, 175))
@@ -251,14 +261,13 @@ class DeepSkyWidget(BaseWidget):
         self.text(obj["common"], self._f_comm, config.TEXT_MID,
                   img_x + 8, img_y + _IMG_H - strip_h + 21)
 
-        # Constellation badge top-right
         const_bg = pygame.Surface((36, 17), pygame.SRCALPHA)
         const_bg.fill((0, 0, 0, 140))
         self.surface.blit(const_bg, (img_x + _IMG_W - 39, img_y + 4))
         self.text(obj["const"], self._f_tiny, config.GOLD,
                   img_x + _IMG_W - 6, img_y + 6, "topright")
 
-        # ── Info section below image ──────────────────────────────────────────
+        # ── Info below image ──────────────────────────────────────────────────
         iy = ry + _INFO_TOP + 6
 
         type_clr = _TYPE_COLOR.get(obj["type"], config.TEXT_MID)
@@ -272,14 +281,13 @@ class DeepSkyWidget(BaseWidget):
                       rx + 240, iy)
 
         iy += 18
-        win = obj.get("window", "--")
-        self.text(f"Best: {win}", self._f_tiny, config.TEXT_MID, rx + 8, iy)
+        self.text(f"Best: {obj.get('window','--')}", self._f_tiny,
+                  config.TEXT_MID, rx + 8, iy)
 
         iy += 15
-        tran = obj.get("transit", "--")
-        self.text(f"Transit: {tran}", self._f_tiny, config.TEXT_LO, rx + 8, iy)
+        self.text(f"Transit: {obj.get('transit','--')}", self._f_tiny,
+                  config.TEXT_LO, rx + 8, iy)
 
-        # Survey attribution
         self.text("DSS2 · CDS Strasbourg", self._f_tiny, config.TEXT_LO,
                   self.rect.right - 8, iy, "topright")
 
@@ -297,16 +305,14 @@ class DeepSkyWidget(BaseWidget):
                                dot_r)
 
     def _draw_spinner(self, rect):
-        """Animated dots while image loads."""
         cx, cy = rect.centerx, rect.centery
         n = 8
         for i in range(n):
-            a   = math.radians(i * 360 / n)
+            a   = math.radians(i * 360 / n + self._spin_tick * 8)
             age = (self._spin_tick - i * 3) % (n * 3)
             alpha = max(40, 220 - age * 22)
-            r   = 18
-            px  = cx + int(r * math.cos(a))
-            py  = cy + int(r * math.sin(a))
+            px  = cx + int(18 * math.cos(a))
+            py  = cy + int(18 * math.sin(a))
             pygame.draw.circle(self.surface, (*config.TEXT_MID, alpha), (px, py), 3)
         self.text("Loading image…", self._f_tiny, config.TEXT_LO,
                   cx, cy + 30, "midtop")
@@ -318,10 +324,10 @@ def _draw_dso_art(surf, obj_type, cx, cy, r):
     t = obj_type
     if "Galaxy" in t:
         for a in range(0, 360, 6):
-            rad = math.radians(a)
+            rad  = math.radians(a)
             fade = int(80 * abs(math.cos(math.radians(a * 2))))
-            px = cx + int(r * math.cos(rad))
-            py = cy + int(r * 0.35 * math.sin(rad))
+            px   = cx + int(r * math.cos(rad))
+            py   = cy + int(r * 0.35 * math.sin(rad))
             pygame.draw.circle(surf, (80 + fade, 50 + fade // 2, 140 + fade // 2), (px, py), 1)
         pygame.draw.ellipse(surf, (100, 70, 180),
                             pygame.Rect(cx - r // 2, cy - r // 6, r, r // 3))
@@ -333,7 +339,6 @@ def _draw_dso_art(surf, obj_type, cx, cy, r):
             d   = rng.gauss(0, r * 0.4)
             px  = cx + int(d * math.cos(a))
             py  = cy + int(d * math.sin(a) * 0.7)
-            alpha = rng.randint(80, 200)
             c   = rng.choice([(40, 180, 200), (200, 100, 40), (80, 200, 120)])
             pygame.draw.circle(surf, c, (px, py), rng.randint(1, 3))
     elif "Cluster" in t:
@@ -342,8 +347,7 @@ def _draw_dso_art(surf, obj_type, cx, cy, r):
         for _ in range(25):
             px = cx + rng.randint(-r, r)
             py = cy + rng.randint(-r // 2, r // 2)
-            br = rng.randint(1, 3)
-            pygame.draw.circle(surf, (255, 230, 100), (px, py), br)
+            pygame.draw.circle(surf, (255, 230, 100), (px, py), rng.randint(1, 3))
     else:
         pygame.draw.circle(surf, config.TEXT_LO, (cx, cy), r // 2, 1)
 
@@ -351,7 +355,6 @@ def _draw_dso_art(surf, obj_type, cx, cy, r):
 # ── Visibility computation ────────────────────────────────────────────────────
 
 def _in_shoot_window(transit_str: str, start_h: float, end_h: float) -> bool:
-    """Return True if the transit time falls within the user's shooting window."""
     if not transit_str or transit_str in ("--", "all night"):
         return True
     m = re.match(r"(\d+):(\d+)(AM|PM)", transit_str.upper())
@@ -361,33 +364,24 @@ def _in_shoot_window(transit_str: str, start_h: float, end_h: float) -> bool:
     if ampm == "PM" and h != 12: h += 12
     elif ampm == "AM" and h == 12: h = 0
     t = h + mn / 60.0
-    if start_h <= end_h:               # window within same day
+    if start_h <= end_h:
         return start_h <= t <= end_h
-    else:                               # window crosses midnight
+    else:
         return t >= start_h or t <= end_h
 
 
 def _passes_filters(entry: dict) -> bool:
-    """Apply magnitude, FoV and shooting-window filters from config."""
     mag = entry["mag"]
     fov = entry.get("fov")
-
-    # Magnitude filter (skip objects with unknown magnitude — always include)
     if mag is not None:
         if mag < config.DSO_MAG_MIN or mag > config.DSO_MAG_MAX:
             return False
-
-    # Field-of-view filter
     if fov is not None:
         if fov < config.DSO_FOV_MIN or fov > config.DSO_FOV_MAX:
             return False
-
-    # Shooting-window filter
     if not _in_shoot_window(entry.get("transit", "--"),
-                            config.DSO_SHOOT_START,
-                            config.DSO_SHOOT_END):
+                            config.DSO_SHOOT_START, config.DSO_SHOOT_END):
         return False
-
     return True
 
 
@@ -416,7 +410,6 @@ def _build_tonight_list() -> list:
     for entry in _CATALOG:
         name, common, obj_type, ra, dec, mag, const, fov = entry
 
-        # Fast mag/FoV pre-filter before expensive ephem computation
         if mag is not None and (mag < config.DSO_MAG_MIN or mag > config.DSO_MAG_MAX):
             continue
         if fov is not None and (fov < config.DSO_FOV_MIN or fov > config.DSO_FOV_MAX):
@@ -431,8 +424,7 @@ def _build_tonight_list() -> list:
             obs_t.lat  = obs.lat
             obs_t.lon  = obs.lon
             obs_t.date = obs.date
-
-            transit_t = obs_t.next_transit(body)
+            transit_t  = obs_t.next_transit(body)
             obs_t.date = transit_t
             body.compute(obs_t)
             max_alt = float(body.alt) * 180 / math.pi
@@ -458,13 +450,12 @@ def _build_tonight_list() -> list:
             window, trans = "--", "--"
 
         rec = {
-            "name":    name,  "common": common, "type":  obj_type,
-            "ra":      ra,    "dec":    dec,
-            "mag":     mag,   "const":  const,  "fov":   fov,
+            "name": name, "common": common, "type": obj_type,
+            "ra": ra, "dec": dec,
+            "mag": mag, "const": const, "fov": fov,
             "max_alt": max_alt, "window": window, "transit": trans,
         }
 
-        # Apply shooting-window filter now that we have the transit time
         if not _in_shoot_window(trans, config.DSO_SHOOT_START, config.DSO_SHOOT_END):
             continue
 

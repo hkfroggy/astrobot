@@ -475,6 +475,7 @@ class WeatherWidget(BaseWidget):
     def __init__(self, surface, rect):
         super().__init__(surface, rect)
         self._refresh_interval = config.WEATHER_REFRESH
+        self._page  = 1          # set by main.py; controls bottom-section content
         self._f_big   = self.make_font(48)
         self._f_large = self.make_font(20)
         self._f_med   = self.make_font(16)
@@ -489,7 +490,8 @@ class WeatherWidget(BaseWidget):
             "winddirection_10m,relativehumidity_2m,apparent_temperature"
             "&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset"
             "&hourly=cloudcover,cloudcover_low,cloudcover_mid,cloudcover_high,"
-            "weathercode,relative_humidity_2m,temperature_2m,dewpoint_2m,windspeed_10m"
+            "precipitation_probability,weathercode,relative_humidity_2m,"
+            "temperature_2m,dewpoint_2m,windspeed_10m"
             f"&temperature_unit={'fahrenheit' if config.TEMP_UNIT == 'F' else 'celsius'}"
             "&windspeed_unit=mph"
             f"&timezone={config.TIMEZONE}&forecast_days=5"
@@ -506,6 +508,9 @@ class WeatherWidget(BaseWidget):
 
     def draw(self):
         self.draw_bg()
+        if self._fetch_failed:
+            self.draw_error()
+            return
         with self._lock:
             d = dict(self.data)
 
@@ -598,8 +603,11 @@ class WeatherWidget(BaseWidget):
                          (self.rect.x + 6, div_y),
                          (self.rect.right - 6, div_y), 1)
 
-        # ── Night sky chart ───────────────────────────────────────────────────
-        self._draw_night_chart(astro, div_y + 4)
+        # ── Bottom section — page-dependent ──────────────────────────────────
+        if self._page == 2:
+            self._draw_hourly_cloud(d, div_y + 4)
+        else:
+            self._draw_night_chart(astro, div_y + 4)
 
     # ── Mist Forest panel ────────────────────────────────────────────────────
     #
@@ -775,6 +783,120 @@ class WeatherWidget(BaseWidget):
         self.text("★ MW Core", self._f_tiny, config.PURPLE, cx1 - 4, cy0 + 2,  "topright")
         self.text("☽ Moon",    self._f_tiny, config.GOLD,   cx1 - 4, cy0 + 14, "topright")
         pygame.draw.rect(self.surface, config.DIVIDER, pygame.Rect(cx0, cy0, cw, ch), 1)
+
+    # ── Hourly cloud & rain chart (page 2) ────────────────────────────────────
+
+    def _draw_hourly_cloud(self, data, top_y):
+        """
+        24-hour bar chart: cloud coverage (grey filled) + rain probability (blue bars).
+        Displayed in the bottom section of the weather widget on page 2.
+        """
+        hourly   = data.get("hourly", {})
+        times    = hourly.get("time",                    [])
+        cc_arr   = hourly.get("cloudcover",              [])
+        rain_arr = hourly.get("precipitation_probability",[])
+
+        # Find the index of the current hour
+        now_str = datetime.datetime.now().strftime("%Y-%m-%dT%H:00")
+        try:
+            start_i = times.index(now_str)
+        except ValueError:
+            # Fallback: find closest
+            start_i = 0
+            for i, t in enumerate(times):
+                if t >= now_str:
+                    start_i = i
+                    break
+
+        HOURS   = 24
+        end_i   = min(start_i + HOURS, len(times))
+        n       = end_i - start_i
+        if n == 0:
+            self.text("No hourly data", self._f_small, config.TEXT_LO,
+                      self.rect.centerx, top_y + 60, "midtop")
+            return
+
+        # Chart geometry
+        L_PAD  = 36    # left margin for Y labels
+        R_PAD  = 10
+        T_PAD  = 18    # space for header
+        B_PAD  = 22    # space for X labels
+        cx0 = self.rect.x + L_PAD
+        cy0 = top_y + T_PAD
+        cw  = self.rect.width - L_PAD - R_PAD
+        ch  = self.rect.bottom - B_PAD - cy0
+        cy1 = cy0 + ch
+
+        col_w = cw / n
+
+        # Header
+        self.text("24-HOUR CLOUD & RAIN", self._f_small, config.TEXT_LO,
+                  self.rect.x + L_PAD, top_y, "topleft")
+        # Legend
+        self.text("▬ Cloud", self._f_tiny, (140, 155, 180),
+                  self.rect.right - R_PAD - 80, top_y, "topleft")
+        self.text("▬ Rain %", self._f_tiny, config.BLUE,
+                  self.rect.right - R_PAD, top_y, "topright")
+
+        # Background
+        pygame.draw.rect(self.surface, (6, 10, 22),
+                         pygame.Rect(cx0, cy0, cw, ch))
+
+        # Y-axis grid lines and labels (0 / 50 / 100 %)
+        for pct, lbl in ((0, "0"), (50, "50"), (100, "100%")):
+            gy = cy1 - int(pct / 100 * ch)
+            pygame.draw.line(self.surface, (22, 32, 58),
+                             (cx0, gy), (cx0 + cw, gy), 1)
+            self.text(lbl, self._f_tiny, config.TEXT_LO,
+                      cx0 - 2, gy, "midright")
+
+        # Bars — cloud cover (filled) then rain probability (outline/fill)
+        for i in range(n):
+            idx = start_i + i
+            cc   = cc_arr[idx]   if idx < len(cc_arr)   else None
+            rain = rain_arr[idx] if idx < len(rain_arr) else None
+
+            bx = cx0 + int(i * col_w)
+            bw = max(1, int(col_w) - 1)
+
+            # Cloud cover — light grey filled bar
+            if cc is not None:
+                bh = int(cc / 100 * ch)
+                if bh > 0:
+                    # Colour: denser cloud = darker grey-blue
+                    grey = max(30, 90 - int(cc * 0.4))
+                    pygame.draw.rect(self.surface, (grey, grey + 10, grey + 25),
+                                     pygame.Rect(bx, cy1 - bh, bw, bh))
+
+            # Rain probability — blue overlay bar (thinner, on top)
+            if rain is not None and rain > 0:
+                rh = int(rain / 100 * ch)
+                rw = max(1, bw // 2)
+                rx = bx + (bw - rw) // 2
+                intensity = min(255, 80 + int(rain * 1.5))
+                pygame.draw.rect(self.surface, (40, intensity // 2, intensity),
+                                 pygame.Rect(rx, cy1 - rh, rw, rh))
+
+        # Now-marker (vertical cyan line at current hour)
+        now_x = cx0 + int(0.5 * col_w)
+        pygame.draw.line(self.surface, config.CYAN,
+                         (now_x, cy0), (now_x, cy1), 1)
+
+        # X-axis hour labels every 3 hours
+        for i in range(n):
+            idx  = start_i + i
+            if idx >= len(times): break
+            t    = times[idx]
+            hour = int(t[11:13]) if len(t) >= 13 else 0
+            if i == 0 or hour % 3 == 0:
+                lx  = cx0 + int((i + 0.5) * col_w)
+                lbl = "Now" if i == 0 else (f"{hour%12 or 12}{'a' if hour<12 else 'p'}")
+                clr = config.CYAN if i == 0 else config.TEXT_LO
+                self.text(lbl, self._f_tiny, clr, lx, cy1 + 3, "midtop")
+
+        # Border
+        pygame.draw.rect(self.surface, config.DIVIDER,
+                         pygame.Rect(cx0, cy0, cw, ch), 1)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
