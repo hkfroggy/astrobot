@@ -28,7 +28,31 @@
       "Bash(.venv/bin/python -m py_compile widgets/clock.py)",
       "Bash(.venv/bin/python -m py_compile widgets/deep_sky.py)",
       "Bash(.venv/bin/python -m py_compile main.py config.py)",
-      "Bash(.venv/bin/python -m py_compile widgets/clock.py widgets/moon.py config.py main.py)"
+      "Bash(.venv/bin/python -m py_compile widgets/clock.py widgets/moon.py config.py main.py)",
+      "Bash(.venv/bin/python download_dso_images.py)",
+      "Bash(.venv/bin/python -c ':*)",
+      "WebFetch(domain:www.bom.gov.au)",
+      "WebFetch(domain:api.weather.bom.gov.au)",
+      "Bash(curl -s -I \"http://www.bom.gov.au/radar/IDR.png\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{content_type} size=%{size_download}\" \"ftp://ftp.bom.gov.au/anon/gen/gms/IDE00420.jpg\")",
+      "Bash(curl -s -A \"Mozilla/5.0\" -o /dev/null -w \"%{http_code} size=%{size_download}\" \"http://www.bom.gov.au/radar/IDE00420.jpg\")",
+      "Bash(curl -s -A \"Mozilla/5.0\" -o /dev/null -w \"%{http_code} size=%{size_download}\" \"http://www.bom.gov.au/radar/IDE00421.jpg\")",
+      "Bash(curl -s -L -A \"Mozilla/5.0\" -o /dev/null -w \"%{http_code} %{url_effective} size=%{size_download}\" \"http://www.bom.gov.au/radar/IDE00420.jpg\")",
+      "Bash(curl -s -A Mozilla/5.0 -H 'Accept: application/json' https://api.weather.bom.gov.au/v1/observations -o /dev/null -w '%{http_code}')",
+      "Bash(curl -s -A Mozilla/5.0 https://www.bom.gov.au/products/radar_transparencies/IDR.radar.png -o /dev/null -w '%{http_code}')",
+      "Bash(curl -s -L -A Mozilla/5.0 -o /tmp/test_bom.png -w '%{http_code} %{content_type} size=%{size_download}' https://www.bom.gov.au/products/radar_transparencies/IDR.background.png)",
+      "Bash(curl -s -o /dev/null -w '%{http_code}' https://www.jma.go.jp/bosai/himawari/data/satimg/targetTimes_B13.json)",
+      "Bash(curl -s -o /dev/null -w '%{http_code} size=%{size_download}' https://himawari8.nict.go.jp/img/D531106/1d/550/2024/01/01/000000_0_0.png)",
+      "Bash(curl -s -w '%{http_code}' https://himawari8.nict.go.jp/himawari8-cast/img/full/1d/latest.json)",
+      "Bash(curl -s -o /dev/null -w '%{http_code} size=%{size_download}' https://himawari8.nict.go.jp/img/D531106/2d/550/2024/04/17/000000_0_0.png)",
+      "Bash(curl -s \"https://himawari8.nict.go.jp/img/D531106/latest.json\")",
+      "Bash(curl -s -o /dev/null -w '%{http_code} size=%{size_download}' https://himawari8.nict.go.jp/img/D531106/1d/550/2026/04/16/230000_0_0.png)",
+      "Bash(curl -s -o /dev/null -w '%{http_code} size=%{size_download}' https://himawari8.nict.go.jp/img/FLDK/2d/550/2026/04/16/230000_0_0.png)",
+      "Bash(curl -s -o /dev/null -w '%{http_code} size=%{size_download}' https://himawari8.nict.go.jp/img/D531106/2d/550/2026/04/16/230000_1_1.png)",
+      "Bash(curl -s -o /dev/null -w '4d tile\\(2,2\\): %{http_code} size=%{size_download}\\\\n' https://himawari8.nict.go.jp/img/D531106/4d/550/2026/04/16/230000_2_2.png)",
+      "Bash(curl -s -o /dev/null -w '8d tile\\(4,5\\): %{http_code} size=%{size_download}\\\\n' https://himawari8.nict.go.jp/img/D531106/8d/550/2026/04/16/230000_4_5.png)",
+      "Bash(curl -s -o /dev/null -w '16d tile\\(9,11\\): %{http_code} size=%{size_download}\\\\n' https://himawari8.nict.go.jp/img/D531106/16d/550/2026/04/16/230000_9_11.png)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

@@ -164,8 +164,17 @@ def main():
             # Settings overlay intercepts all events while open
             if settings.is_open:
                 result = settings.handle_event(event)
-                if result == "terminate":
+                if result == "exit":
                     running = False
+                elif result == "toggle_window":
+                    is_fullscreen = not is_fullscreen
+                    screen  = _make_screen(is_fullscreen)
+                    _bg_p1  = _make_bg(_DIVIDERS_P1)
+                    _bg_p2  = _make_bg(_DIVIDERS_P2)
+                    for w in widgets:
+                        w.surface = screen
+                        w.invalidate()
+                    settings.screen = screen
                 elif result == "saved":
                     for w in widgets:
                         with w._lock:
@@ -179,7 +188,7 @@ def main():
                 if event.key in (pygame.K_ESCAPE, pygame.K_q):
                     running = False
                 elif event.key == pygame.K_s:
-                    settings.open()
+                    settings.open(is_fullscreen)
                 elif event.key == pygame.K_p:
                     current_page = (current_page % _TOTAL_PAGES) + 1
                     for w in widgets:
@@ -192,11 +201,11 @@ def main():
                     for w in widgets:
                         w.surface = screen
                         w.invalidate()
-                    settings.surface = screen
+                    settings.screen = screen
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if _GEAR_RECT.collidepoint(event.pos):
-                    settings.open()
+                    settings.open(is_fullscreen)
                 elif _PAGE_RECT.collidepoint(event.pos):
                     current_page = (current_page % _TOTAL_PAGES) + 1
                     for w in widgets:
