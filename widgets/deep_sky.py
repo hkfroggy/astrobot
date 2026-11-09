@@ -31,9 +31,12 @@ _IMG_W    = 354     # 360 – 2×margin
 _IMG_H    = 194     # image height
 _INFO_TOP = _HDR_H + _IMG_H   # y-offset where info text starts
 
-# ── CDS HiPS2FITS endpoints ────────────────────────────────────────────────────
+# ── Online image endpoints ───────────────────────────────────────────────────
+_SKYVIEW_BASE = "https://skyview.gsfc.nasa.gov/cgi-bin/images"
+_SKYVIEW_SURVEY = "DSS2 Red"
+
 _HIPS_BASE  = "https://alasky.cds.unistra.fr/hips-image-services/hips2fits"
-_HIPS_BASE2 = "https://hips2fits.astropy.org/hips2fits"
+_HIPS_BASE2 = "https://alaskybis.cds.unistra.fr/hips-image-services/hips2fits"
 _HIPS_SURVEY_PRIMARY  = "CDS/P/DSS2/color"
 _HIPS_SURVEY_FALLBACK = "CDS/P/2MASS/color"
 
@@ -47,22 +50,31 @@ def _local_path(name: str) -> Path:
     return _LOCAL_DIR / f"{safe}.jpg"
 
 
-def _load_image_bytes(obj: dict) -> "bytes | None":
-    """Return JPEG bytes for obj — local file first, then network."""
-    name  = obj["name"]
-    local = _local_path(name)
-
-    if local.exists():
-        try:
-            return local.read_bytes()
-        except Exception as e:
-            print(f"[DSO img] local read {name}: {e}")
-
-    # Network fallback
+def _fetch_online_image(obj: dict) -> "tuple[bytes, str] | None":
+    """Fetch JPEG bytes from NASA SkyView, then the CDS HiPS mirrors."""
+    name = obj["name"]
     ra  = _ra_to_deg(obj["ra"])
     dec = _dec_to_deg(obj["dec"])
     fov = obj.get("fov", 0.7) * _FOV_SCALE
 
+    # NASA SkyView has a direct image endpoint and DSS2 all-sky coverage.
+    try:
+        r = requests.get(_SKYVIEW_BASE, params={
+            "Position":    f"{ra:.5f},{dec:.5f}",
+            "Survey":      _SKYVIEW_SURVEY,
+            "Coordinates": "J2000",
+            "Projection":  "Tan",
+            "Pixels":      f"{_IMG_W},{_IMG_H}",
+            "Size":        f"{fov:.5f}",
+            "Return":      "JPEG",
+        }, timeout=30)
+        r.raise_for_status()
+        if len(r.content) > 500 and "image" in r.headers.get("Content-Type", ""):
+            return r.content, f"NASA SkyView/{_SKYVIEW_SURVEY}"
+    except Exception as e:
+        print(f"[DSO img] {name} NASA SkyView: {e}")
+
+    # Retain both official CDS hosts as fallbacks.
     for base in (_HIPS_BASE, _HIPS_BASE2):
         for survey in (_HIPS_SURVEY_PRIMARY, _HIPS_SURVEY_FALLBACK):
             try:
@@ -73,16 +85,36 @@ def _load_image_bytes(obj: dict) -> "bytes | None":
                 }, timeout=20)
                 r.raise_for_status()
                 if len(r.content) > 500:
-                    try:
-                        _LOCAL_DIR.mkdir(parents=True, exist_ok=True)
-                        local.write_bytes(r.content)
-                    except Exception:
-                        pass
-                    return r.content
+                    return r.content, f"CDS/{survey}"
             except Exception as e:
                 print(f"[DSO img] {name} {base} ({survey}): {e}")
 
     return None
+
+
+def _load_image_bytes(obj: dict) -> "bytes | None":
+    """Return JPEG bytes for obj — local file first, then online fetch."""
+    name  = obj["name"]
+    local = _local_path(name)
+
+    if local.exists():
+        try:
+            return local.read_bytes()
+        except Exception as e:
+            print(f"[DSO img] local read {name}: {e}")
+
+    result = _fetch_online_image(obj)
+    if result is None:
+        return None
+
+    raw, source = result
+    try:
+        _LOCAL_DIR.mkdir(parents=True, exist_ok=True)
+        local.write_bytes(raw)
+    except Exception as e:
+        print(f"[DSO img] cache write {name}: {e}")
+    print(f"[DSO img] {name} downloaded from {source}")
+    return raw
 
 
 # ── Catalog ───────────────────────────────────────────────────────────────────

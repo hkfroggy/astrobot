@@ -51,7 +51,7 @@ A full-screen astronomy & weather dashboard for a 7-inch Raspberry Pi display (1
 ### 🔭 Deep Sky — bottom-left panel
 - Rotating slideshow of up to **10 tonight's best DSOs** (filtered by altitude ≥ 20°, magnitude, FoV, and shooting window)
 - Real astronomical images loaded from a **local DSO image library** (`assets/dso/`) — instant, no network required
-- Falls back to CDS DSS2 / 2MASS network fetch if a local image is missing; procedural placeholder art as final fallback
+- Fetches missing images online from NASA SkyView DSS2, with CDS HiPS mirrors as fallbacks; procedural placeholder art is the final fallback
 - Image overlay: object name, common name, constellation badge (top-right), type colour badge, magnitude, max altitude, rise–set window, transit time
 - **Page dots** at the bottom indicating current slide position
 - Auto-advances every 10 seconds
@@ -164,17 +164,17 @@ Leave `NOAA_STATION_ID = ""` to disable (swell data still works).
 
 ---
 
-### 🔭 CDS HiPS2FITS — Astronomical Image Service
+### 🔭 NASA SkyView and CDS HiPS2FITS — Astronomical Image Services
 **Used by:** Deep Sky widget  
-**Endpoint:** `https://alasky.cds.unistra.fr/hips-image-services/hips2fits`  
-**Fallback:** `https://hips2fits.astropy.org/hips2fits`  
-**Docs:** https://aladin.cds.unistra.fr/hips/  
-**Provider:** Centre de Données astronomiques de Strasbourg (CDS)
+- **Primary:** `https://skyview.gsfc.nasa.gov/cgi-bin/images`
+- **Fallbacks:** CDS `alasky` and `alaskybis` HiPS2FITS mirrors
+- **Docs:** https://skyview.gsfc.nasa.gov/current/docs/batchpage.html
+**Providers:** NASA HEASARC SkyView and CDS Strasbourg
 
 | Data pulled | Widget |
 |---|---|
-| DSS2 colour images (primary survey) | Deep Sky — object slideshow |
-| 2MASS near-infrared images (fallback) | Deep Sky — object slideshow |
+| DSS2 Red images (primary survey) | Deep Sky — object slideshow |
+| CDS DSS2 colour / 2MASS images (fallback) | Deep Sky — object slideshow |
 
 **No registration or API key required.**
 
@@ -186,7 +186,7 @@ Images are stored locally in `assets/dso/` so the widget loads instantly without
 python download_dso_images.py
 ```
 
-This downloads one JPEG per catalog object (28 images, ~300 KB total) from the CDS DSS2 survey and saves them to `assets/dso/`. Progress and any errors are printed to the terminal.
+This downloads one JPEG per catalog object (28 images) from the configured online providers and saves them to `assets/dso/`. Progress and any errors are printed to the terminal.
 
 To force a re-download of all images (e.g. after changing `_FOV_SCALE`):
 
